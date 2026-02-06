@@ -28,6 +28,7 @@ const rawQuestionSchema = z.object({
   options: z.array(z.string()).optional(),
   answer: z.union([z.string(), z.array(z.string())]),
   explanation: z.string().optional(),
+  summary: z.string().optional(),
 });
 
 const quizResponseSchema = z.object({
@@ -47,6 +48,7 @@ const askSchema = z.object({
 function normalizeQuestion(raw: z.infer<typeof rawQuestionSchema>): QuizQuestion {
   const id = raw.id ?? randomUUID();
   const explanation = raw.explanation;
+  const summary = raw.summary;
   if (raw.type === 'choice') {
     const options = raw.options ?? [];
     const answer = Array.isArray(raw.answer) ? raw.answer[0] : raw.answer;
@@ -57,6 +59,7 @@ function normalizeQuestion(raw: z.infer<typeof rawQuestionSchema>): QuizQuestion
       options,
       answer,
       explanation,
+      summary,
     } as ChoiceQuestion;
   }
 
@@ -66,6 +69,7 @@ function normalizeQuestion(raw: z.infer<typeof rawQuestionSchema>): QuizQuestion
     prompt: raw.prompt,
     answer: raw.answer,
     explanation,
+    summary,
   } as QuizQuestion;
 }
 
@@ -82,14 +86,22 @@ function isChoiceCorrect(questionAnswer: string, userAnswer: string, options: st
 
   if (normalizedCorrect === normalizedUser) return true;
 
-  // Accept match by option label (A/B/C/D) when options include the label.
-  const labelMatch = normalizedCorrect.match(/^[a-d]/i);
-  if (labelMatch && labelMatch[0].toLowerCase() === normalizedUser) {
-    return true;
+  const parsed = options.map((opt) => {
+    const labelMatch = opt.match(/^\s*([a-z])\s*[\.|\)|、|，]/i);
+    const label = labelMatch?.[1]?.toLowerCase() ?? '';
+    const text = opt.replace(/^\s*[a-z]\s*[\.|\)|、|，]\s*/i, '').trim().toLowerCase();
+    return { label, text: text || opt.trim().toLowerCase() };
+  });
+
+  const correctOpt = parsed.find((p) => p.label === normalizedCorrect || p.text === normalizedCorrect);
+  const userOpt = parsed.find((p) => p.label === normalizedUser || p.text === normalizedUser);
+
+  if (correctOpt && userOpt) {
+    if (correctOpt.label && userOpt.label) return correctOpt.label === userOpt.label;
+    if (correctOpt.text && userOpt.text) return correctOpt.text === userOpt.text;
   }
 
-  // Accept match by option text content.
-  return options.some((opt) => opt.toLowerCase().includes(normalizedCorrect) && opt.toLowerCase().includes(normalizedUser));
+  return false;
 }
 
 async function getChoiceRationale(question: ChoiceQuestion, userAnswer: string, isCorrect: boolean): Promise<string> {
@@ -155,7 +167,7 @@ app.post('/api/quiz', async (req: Request, res: Response, next: NextFunction) =>
       },
       {
         role: 'user',
-        content: `Generate ${count} ${type === 'choice' ? 'multiple-choice' : 'fill-in-the-blank'} questions about "${topic}". Avoid questions similar to these past prompts:\n${historyText}\nRequirements:\n- Output ONLY type "${type}" questions; do NOT mix other types.\n- Vary difficulty from easy to moderate.\n- Keep options/answers concise.\n- For multiple-choice, provide 3-5 options and mark the correct option label (A, B, C, ...).\n- For fill-in, provide concise reference answers.\n- Use Markdown; math must use LaTeX with $...$ or $$...$$ delimiters.\nRespond ONLY with JSON matching: {"questions":[{"id":"string","type":"${type}" ,"prompt":"string","options":["A. ..."],"answer":"string or array","explanation":"short rationale"}]}.`,
+        content: `Generate ${count} ${type === 'choice' ? 'multiple-choice' : 'fill-in-the-blank'} questions about "${topic}". Avoid questions similar to these past prompts:\n${historyText}\nRequirements:\n- Output ONLY type "${type}" questions; do NOT mix other types.\n- Vary difficulty from easy to moderate.\n- Keep options/answers concise.\n- For multiple-choice, provide 3-5 options and mark the correct option label (A, B, C, ...).\n- For fill-in, provide concise reference answers.\n- Provide a short summary for each question about the main concept tested (e.g., derivative rules, matrix rank).\n- Use Markdown; math must use LaTeX with $...$ or $$...$$ delimiters.\nRespond ONLY with JSON matching: {"questions":[{"id":"string","type":"${type}","prompt":"string","options":["A. ..."],"answer":"string or array","explanation":"short rationale","summary":"brief concept"}]}.`,
       },
     ];
 

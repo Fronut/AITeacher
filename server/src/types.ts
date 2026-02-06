@@ -6,6 +6,7 @@ export interface BaseQuestion {
   prompt: string;
   answer: string | string[];
   explanation?: string;
+  summary?: string;
 }
 
 export interface ChoiceQuestion extends BaseQuestion {

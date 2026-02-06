@@ -55,9 +55,9 @@ function App() {
 
   const recentMemoryPreview = useMemo(() => quizMemory.slice(-5), [quizMemory]);
 
-  const updateMemory = (newPrompts: string[]) => {
+  const updateMemory = (summaries: string[]) => {
     setQuizMemory((prev) => {
-      const merged = [...prev, ...newPrompts].slice(-80);
+      const merged = [...prev, ...summaries.filter(Boolean)].slice(-500);
       return merged;
     });
   };
@@ -90,7 +90,7 @@ function App() {
 
       const data = (await response.json()) as QuizResponse;
       setQuestions(data.questions);
-      updateMemory(data.questions.map((q) => q.prompt));
+      updateMemory(data.questions.map((q) => q.summary ?? q.prompt));
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : '生成试题失败');
@@ -100,7 +100,6 @@ function App() {
   };
 
   const submitAnswer = async (question: QuizQuestion, userAnswer: string) => {
-    setGradingId(question.id);
     setError(null);
     try {
       const response = await fetch('/api/grade', {
@@ -121,26 +120,43 @@ function App() {
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : '判题失败');
-    } finally {
-      setGradingId(null);
     }
   };
 
   const handleChoice = (question: QuizQuestion, answer: string) => {
     if (gradingId || results[question.id]) return;
     setUserAnswers((prev) => ({ ...prev, [question.id]: answer }));
-    void submitAnswer(question, answer);
+  };
+
+  const handleSingleSubmit = async (question: QuizQuestion) => {
+    if (gradingId || results[question.id]) return;
+    const raw = userAnswers[question.id];
+    const answer = question.type === 'blank' ? raw?.trim() : raw;
+    if (!answer) {
+      setError('请先填写或选择答案');
+      return;
+    }
+    setGradingId(question.id);
+    await submitAnswer(question, answer);
+    setGradingId(null);
   };
 
   const handleBlankSubmit = (e: FormEvent, question: QuizQuestion) => {
     e.preventDefault();
-    if (gradingId || results[question.id]) return;
-    const answer = userAnswers[question.id]?.trim();
-    if (!answer) {
-      setError('请先填写答案');
-      return;
+    void handleSingleSubmit(question);
+  };
+
+  const handleSubmitAll = async () => {
+    setError(null);
+    for (const question of questions) {
+      if (results[question.id]) continue;
+      const raw = userAnswers[question.id];
+      const answer = question.type === 'blank' ? raw?.trim() : raw;
+      if (!answer) continue;
+      setGradingId(question.id);
+      await submitAnswer(question, answer);
     }
-    void submitAnswer(question, answer);
+    setGradingId(null);
   };
 
   const handleAsk = async () => {
@@ -242,6 +258,13 @@ function App() {
                 </button>
               );
             })}
+            <button
+              className="ghost"
+              onClick={() => void handleSingleSubmit(question)}
+              disabled={graded || Boolean(gradingId) || !userAnswers[question.id]}
+            >
+              提交本题
+            </button>
           </div>
         )}
 
@@ -255,7 +278,7 @@ function App() {
               disabled={graded || Boolean(gradingId)}
             />
             <button type="submit" disabled={graded || Boolean(gradingId)}>
-              提交答案
+              提交本题
             </button>
           </form>
         )}
@@ -345,6 +368,13 @@ function App() {
         <section className="grid">
           <div className="column">
             <h2>练习区</h2>
+            {questions.length > 0 && (
+              <div className="bulk-actions">
+                <button className="ghost" onClick={handleSubmitAll} disabled={Boolean(gradingId)}>
+                  全部提交批改
+                </button>
+              </div>
+            )}
             {!questions.length && <p className="muted">先输入话题并生成试题</p>}
             {questions.map((q, idx) => renderQuestion(q, idx))}
           </div>

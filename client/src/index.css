@@ -113,6 +113,10 @@ h1 {
   box-shadow: none;
 }
 
+.bulk-actions {
+  margin: 6px 0 12px 0;
+}
+
 label {
   display: grid;
   gap: 4px;

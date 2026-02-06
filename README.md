@@ -4,7 +4,7 @@ A small full-stack app that lets Deepseek (via MCP-style API calls) generate pra
 
 ## Prerequisites
 - Node.js 18+ (built-in `fetch` is used on the server)
-- `.env` in the repo root containing `DEEPSEEK_API_KEY=...` (you already added this)
+- `.env` in the repo root containing `DEEPSEEK_API_KEY=...` 
 - Optionally: `DEEPSEEK_API_URL` and `DEEPSEEK_MODEL` (defaults to Deepseek chat completions endpoint and `deepseek-chat`).
 
 ## Install
