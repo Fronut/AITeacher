@@ -1,0 +1,13 @@
+.env
+node_modules/
+dist/
+build/
+*.log
+.DS_Store
+*.local
+/.azure/
+/.vscode/
+client/node_modules/
+server/node_modules/
+client/dist/
+server/dist/
