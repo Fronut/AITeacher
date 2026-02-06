@@ -26,18 +26,24 @@ export async function callDeepseek(
     throw new Error('Deepseek API key not configured');
   }
 
+  const body = {
+    model,
+    messages,
+    temperature: options.temperature ?? 0.7,
+    response_format: options.json ? { type: 'json_object' } : undefined,
+  };
+
+  // log outgoing payload without credentials
+  // eslint-disable-next-line no-console
+  console.log('[deepseek][request]', JSON.stringify(body));
+
   const response = await fetch(apiUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature: options.temperature ?? 0.7,
-      response_format: options.json ? { type: 'json_object' } : undefined,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
@@ -45,7 +51,11 @@ export async function callDeepseek(
     throw new Error(`Deepseek API error: ${response.status} ${text}`);
   }
 
-  const data = await response.json();
+  const text = await response.text();
+  // eslint-disable-next-line no-console
+  console.log('[deepseek][response]', response.status, text);
+
+  const data = JSON.parse(text);
   const content = data?.choices?.[0]?.message?.content;
   if (!content || typeof content !== 'string') {
     throw new Error('Deepseek returned empty content');

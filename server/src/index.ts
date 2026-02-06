@@ -97,7 +97,7 @@ async function getChoiceRationale(question: ChoiceQuestion, userAnswer: string, 
     {
       role: 'system',
       content:
-        'You are an instructor. Given a multiple-choice question, the correct answer, and the learner\'s choice, provide a concise explanation (max 4 sentences). Encourage and give one actionable tip.',
+        'You are an instructor. Given a multiple-choice question, the correct answer, and the learner\'s choice, provide a concise explanation (max 4 sentences). Encourage and give one actionable tip. Use Markdown; render any math with LaTeX delimited by $...$ or $$...$$.',
     },
     {
       role: 'user',
@@ -115,7 +115,7 @@ async function evaluateBlank(question: QuizQuestion, userAnswer: string): Promis
     {
       role: 'system',
       content:
-        'You grade short answers. Compare the user answer to the reference answers. Return JSON: {"verdict":"correct|partial|incorrect","score":0-1,"explanation":"short"}. Penalize missing key ideas. Reward concise accuracy.',
+        'You grade short answers. Compare the user answer to the reference answers. Return JSON: {"verdict":"correct|partial|incorrect","score":0-1,"explanation":"short"}. Penalize missing key ideas. Reward concise accuracy. Keep explanation in Markdown; for math use LaTeX delimited by $...$ or $$...$$.',
     },
     {
       role: 'user',
@@ -151,18 +151,22 @@ app.post('/api/quiz', async (req: Request, res: Response, next: NextFunction) =>
       {
         role: 'system',
         content:
-          'You are a pedagogy-focused tutor who generates engaging practice questions. Avoid repeating near-duplicates. Balance conceptual understanding and application.',
+          'You are a pedagogy-focused tutor who generates engaging practice questions. Avoid repeating near-duplicates. Balance conceptual understanding and application. Use Markdown; for math include LaTeX with $...$ or $$...$$ delimiters.',
       },
       {
         role: 'user',
-        content: `Generate ${count} ${type === 'choice' ? 'multiple-choice' : 'fill-in-the-blank'} questions about "${topic}". Avoid questions similar to these past prompts:\n${historyText}\nRequirements:\n- Vary difficulty from easy to moderate.\n- Keep options/answers concise.\n- For multiple-choice, provide 3-5 options and mark the correct option label (A, B, C, ...).\n- For fill-in, provide concise reference answers.\nRespond ONLY with JSON matching: {"questions":[{"id":"string","type":"choice|blank","prompt":"string","options":["A. ..."],"answer":"string or array","explanation":"short rationale"}]}.`,
+        content: `Generate ${count} ${type === 'choice' ? 'multiple-choice' : 'fill-in-the-blank'} questions about "${topic}". Avoid questions similar to these past prompts:\n${historyText}\nRequirements:\n- Output ONLY type "${type}" questions; do NOT mix other types.\n- Vary difficulty from easy to moderate.\n- Keep options/answers concise.\n- For multiple-choice, provide 3-5 options and mark the correct option label (A, B, C, ...).\n- For fill-in, provide concise reference answers.\n- Use Markdown; math must use LaTeX with $...$ or $$...$$ delimiters.\nRespond ONLY with JSON matching: {"questions":[{"id":"string","type":"${type}" ,"prompt":"string","options":["A. ..."],"answer":"string or array","explanation":"short rationale"}]}.`,
       },
     ];
 
     const content = await callDeepseek(messages, { temperature: 0.4 });
     const jsonString = extractJson(content);
     const parsed = quizResponseSchema.parse(JSON.parse(jsonString));
-    const questions = parsed.questions.slice(0, count).map(normalizeQuestion);
+    const normalized = parsed.questions.map(normalizeQuestion).filter((q) => q.type === type);
+    if (!normalized.length) {
+      throw new Error('未获取到指定题型的题目，请重试');
+    }
+    const questions = normalized.slice(0, count);
     res.json({ questions });
   } catch (error) {
     next(error);

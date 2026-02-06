@@ -192,6 +192,9 @@ function App() {
         className={`markdown ${className ?? ''}`}
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex]}
+        components={{
+          p: ({ node, ...props }) => <p {...props} />, // ensure block paragraphs for multi-line content
+        }}
       >
         {text}
       </ReactMarkdown>
