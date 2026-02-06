@@ -1,4 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css');
 
 :root {
   font-family: 'Space Grotesk', 'Segoe UI', system-ui, -apple-system, sans-serif;
@@ -72,6 +73,30 @@ h1 {
   color: var(--muted);
 }
 
+.memory-actions {
+  margin: 8px 0 6px 0;
+}
+
+.memory-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.memory-text {
+  flex: 1;
+}
+
+.icon-button {
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: #f7f7ff;
+  padding: 4px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
 .panel {
   background: linear-gradient(135deg, rgba(158, 123, 255, 0.2), rgba(111, 204, 255, 0.1));
   border: 1px solid var(--border);
@@ -79,6 +104,13 @@ h1 {
   padding: 16px;
   display: grid;
   gap: 12px;
+}
+
+.panel .ghost {
+  background: rgba(255, 255, 255, 0.05);
+  color: #f7f7ff;
+  border: 1px solid var(--border);
+  box-shadow: none;
 }
 
 label {
@@ -234,6 +266,12 @@ button:disabled {
   color: #e9ecff;
 }
 
+.answer .label,
+.explanation .label {
+  font-weight: 700;
+  margin-right: 6px;
+}
+
 .muted {
   color: var(--muted);
 }
@@ -258,6 +296,37 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.select-question {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+  font-weight: 600;
+  color: #f3f4ff;
+}
+
+.markdown {
+  color: inherit;
+}
+
+.markdown-inline {
+  display: inline;
+}
+
+.markdown p {
+  margin: 0 0 6px 0;
+}
+
+.markdown ul,
+.markdown ol {
+  margin: 6px 0 6px 18px;
+}
+
+.markdown code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 2px 6px;
+  border-radius: 6px;
 }
 
 .bubble {

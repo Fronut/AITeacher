@@ -1,4 +1,8 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import type { ChatTurn, GradeResult, QuestionType, QuizQuestion } from './types';
 
 interface QuizResponse {
@@ -45,6 +49,7 @@ function App() {
   const [askInput, setAskInput] = useState('');
   const [askLoading, setAskLoading] = useState(false);
   const [chat, setChat] = useState<ChatTurn[]>([]);
+  const [selectedQuestionId, setSelectedQuestionId] = useState('');
 
   const [quizMemory, setQuizMemory] = useLocalMemory('quizMemory', []);
 
@@ -56,6 +61,12 @@ function App() {
       return merged;
     });
   };
+
+  const removeMemory = (index: number) => {
+    setQuizMemory((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const clearMemory = () => setQuizMemory([]);
 
   const generateQuiz = async () => {
     setLoadingQuiz(true);
@@ -136,7 +147,18 @@ function App() {
     if (!askInput.trim()) return;
     setAskLoading(true);
     setError(null);
-    const newChat: ChatTurn[] = [...chat, { role: 'user', content: askInput }];
+
+    const selectedQuestion = questions.find((q) => q.id === selectedQuestionId);
+    const contextBlock = selectedQuestion
+      ? `\n\n[题目上下文]\n题干: ${selectedQuestion.prompt}\n` +
+        (selectedQuestion.options ? `选项: ${selectedQuestion.options.join(' | ')}` : '') +
+        (results[selectedQuestion.id]
+          ? `\n用户回答: ${userAnswers[selectedQuestion.id] ?? '未回答'}\n判定: ${results[selectedQuestion.id]?.verdict ?? ''}\n解析: ${results[selectedQuestion.id]?.explanation ?? ''}`
+          : '')
+      : '';
+
+    const outgoing = askInput + contextBlock;
+    const newChat: ChatTurn[] = [...chat, { role: 'user', content: outgoing }];
     setChat(newChat);
     try {
       const response = await fetch('/api/ask', {
@@ -144,7 +166,7 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ message: askInput, history: chat }),
+        body: JSON.stringify({ message: outgoing, history: chat }),
       });
 
       if (!response.ok) {
@@ -163,6 +185,30 @@ function App() {
     }
   };
 
+  const Markdown = ({ content, className }: { content?: string | string[]; className?: string }) => {
+    const text = Array.isArray(content) ? content.join(' / ') : content ?? '';
+    return (
+      <ReactMarkdown
+        className={`markdown ${className ?? ''}`}
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
+      >
+        {text}
+      </ReactMarkdown>
+    );
+  };
+
+  const InlineMarkdown = ({ content }: { content: string }) => (
+    <ReactMarkdown
+      className="markdown-inline"
+      remarkPlugins={[remarkGfm, remarkMath]}
+      rehypePlugins={[rehypeKatex]}
+      components={{ p: 'span' }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+
   const renderQuestion = (question: QuizQuestion, index: number) => {
     const result = results[question.id];
     const userAnswer = userAnswers[question.id];
@@ -172,7 +218,9 @@ function App() {
       <div key={question.id} className="card">
         <div className="card-header">
           <span className="badge">Q{index + 1}</span>
-          <p className="prompt">{question.prompt}</p>
+          <div className="prompt">
+            <Markdown content={question.prompt} />
+          </div>
         </div>
 
         {isChoice && question.options && (
@@ -187,7 +235,7 @@ function App() {
                   disabled={graded || Boolean(gradingId)}
                   onClick={() => handleChoice(question, label)}
                 >
-                  {opt}
+                  <InlineMarkdown content={opt} />
                 </button>
               );
             })}
@@ -214,8 +262,14 @@ function App() {
             <div className={`verdict ${result.correct ? 'good' : result.verdict === 'partial' ? 'neutral' : 'bad'}`}>
               {result.correct ? '✅ 回答正确' : result.verdict === 'partial' ? '🟡 部分正确' : '❌ 回答不正确'}
             </div>
-            <p className="answer">正确答案：{Array.isArray(question.answer) ? question.answer.join(' / ') : question.answer}</p>
-            <p className="explanation">解析：{result.explanation ?? 'AI 未提供解析'}</p>
+            <div className="answer">
+              <span className="label">正确答案：</span>
+              <Markdown content={question.answer} />
+            </div>
+            <div className="explanation">
+              <span className="label">解析：</span>
+              <Markdown content={result.explanation ?? 'AI 未提供解析'} />
+            </div>
           </div>
         )}
       </div>
@@ -231,11 +285,24 @@ function App() {
           <p className="sub">输入主题与题型，AI 会生成题目并在作答后即时给出判题和解析；同时提供对话模式满足你的追问。</p>
           <div className="memory">
             <span>本地记忆 (用于避免重复)：</span>
-            {recentMemoryPreview.length ? (
+            <div className="memory-actions">
+              <button className="ghost" onClick={clearMemory} disabled={!quizMemory.length}>
+                清空全部
+              </button>
+            </div>
+            {quizMemory.length ? (
               <ul>
-                {recentMemoryPreview.map((m, idx) => (
-                  <li key={idx}>{m}</li>
-                ))}
+                {quizMemory.slice(-10).map((m, idx, arr) => {
+                  const absoluteIndex = quizMemory.length - arr.length + idx;
+                  return (
+                    <li key={absoluteIndex} className="memory-item">
+                      <span className="memory-text">{m}</span>
+                      <button className="icon-button" onClick={() => removeMemory(absoluteIndex)} aria-label="删除记忆">
+                        ✕
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             ) : (
               <span className="muted">暂无历史</span>
@@ -281,11 +348,22 @@ function App() {
 
           <div className="column chat">
             <h2>提问 / 追问</h2>
+            <label className="select-question">
+              选择题目 (可选，用于上下文)
+              <select value={selectedQuestionId} onChange={(e) => setSelectedQuestionId(e.target.value)}>
+                <option value="">不附带题目</option>
+                {questions.map((q, idx) => (
+                  <option key={q.id} value={q.id}>
+                    Q{idx + 1} · {q.prompt.slice(0, 40)}
+                  </option>
+                ))}
+              </select>
+            </label>
             <div className="chat-window">
               {chat.map((turn, idx) => (
                 <div key={idx} className={`bubble ${turn.role === 'user' ? 'user' : 'assistant'}`}>
                   <span className="role">{turn.role === 'user' ? '你' : 'AI'}</span>
-                  <p>{turn.content}</p>
+                  <Markdown content={turn.content} />
                 </div>
               ))}
               {!chat.length && <p className="muted">在这里向 AI 提问或追问解析。</p>}
