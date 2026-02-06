@@ -5,6 +5,14 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import type { ChatTurn, GradeResult, QuestionType, QuizQuestion } from './types';
 
+interface WrongEntry {
+  id: string;
+  prompt: string;
+  options?: string[];
+  answer?: string | string[];
+  explanation?: string;
+}
+
 interface QuizResponse {
   questions: QuizQuestion[];
 }
@@ -35,6 +43,28 @@ function useLocalMemory(key: string, fallback: string[] = []) {
   return [value, setValue] as const;
 }
 
+function useLocalJSON<T>(key: string, fallback: T) {
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const stored = localStorage.getItem(key);
+      if (stored) return JSON.parse(stored) as T;
+    } catch (err) {
+      console.warn('Failed to read local json', err);
+    }
+    return fallback;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (err) {
+      console.warn('Failed to persist local json', err);
+    }
+  }, [key, value]);
+
+  return [value, setValue] as const;
+}
+
 function App() {
   const [topic, setTopic] = useState('');
   const [count, setCount] = useState(5);
@@ -52,15 +82,38 @@ function App() {
   const [selectedQuestionId, setSelectedQuestionId] = useState('');
 
   const [quizMemory, setQuizMemory] = useLocalMemory('quizMemory', []);
+  const [wrongBook, setWrongBook] = useLocalJSON<WrongEntry[]>('wrongBook', []);
 
   const recentMemoryPreview = useMemo(() => quizMemory.slice(-5), [quizMemory]);
 
-  const updateMemory = (summaries: string[]) => {
+  const updateMemory = (prompts: string[]) => {
     setQuizMemory((prev) => {
-      const merged = [...prev, ...summaries.filter(Boolean)].slice(-500);
-      return merged;
+      const normalized = [...prev, ...prompts.filter(Boolean)].map((p) => p.trim()).filter(Boolean);
+      const seen = new Set<string>();
+      const deduped: string[] = [];
+      for (let i = normalized.length - 1; i >= 0; i -= 1) {
+        const key = normalized[i].toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        deduped.push(normalized[i]);
+      }
+      return deduped.reverse().slice(-500);
     });
   };
+
+  const addWrongEntry = (entry: WrongEntry) => {
+    setWrongBook((prev) => {
+      const existing = prev.find((w) => w.id === entry.id);
+      const merged = existing ? prev.map((w) => (w.id === entry.id ? { ...w, ...entry } : w)) : [...prev, entry];
+      return merged.slice(-200);
+    });
+  };
+
+  const removeWrongEntry = (id: string) => {
+    setWrongBook((prev) => prev.filter((w) => w.id !== id));
+  };
+
+  const clearWrongBook = () => setWrongBook([]);
 
   const removeMemory = (index: number) => {
     setQuizMemory((prev) => prev.filter((_, i) => i !== index));
@@ -90,7 +143,7 @@ function App() {
 
       const data = (await response.json()) as QuizResponse;
       setQuestions(data.questions);
-      updateMemory(data.questions.map((q) => q.summary ?? q.prompt));
+      updateMemory(data.questions.map((q) => q.prompt));
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : '生成试题失败');
@@ -117,6 +170,15 @@ function App() {
 
       const result = (await response.json()) as GradeResult;
       setResults((prev) => ({ ...prev, [question.id]: result }));
+      if (!result.correct) {
+        addWrongEntry({
+          id: question.id,
+          prompt: question.prompt,
+          options: question.options,
+          answer: question.answer,
+          explanation: result.explanation,
+        });
+      }
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : '判题失败');
@@ -144,6 +206,11 @@ function App() {
   const handleBlankSubmit = (e: FormEvent, question: QuizQuestion) => {
     e.preventDefault();
     void handleSingleSubmit(question);
+  };
+
+  const handleIDontKnow = async (question: QuizQuestion) => {
+    setUserAnswers((prev) => ({ ...prev, [question.id]: '我不会' }));
+    await handleSingleSubmit(question);
   };
 
   const handleSubmitAll = async () => {
@@ -265,6 +332,9 @@ function App() {
             >
               提交本题
             </button>
+            <button className="ghost" onClick={() => void handleIDontKnow(question)} disabled={graded || Boolean(gradingId)}>
+              我不会
+            </button>
           </div>
         )}
 
@@ -279,6 +349,9 @@ function App() {
             />
             <button type="submit" disabled={graded || Boolean(gradingId)}>
               提交本题
+            </button>
+            <button type="button" className="ghost" disabled={graded || Boolean(gradingId)} onClick={() => void handleIDontKnow(question)}>
+              我不会
             </button>
           </form>
         )}
@@ -296,6 +369,11 @@ function App() {
               <span className="label">解析：</span>
               <Markdown content={result.explanation ?? 'AI 未提供解析'} />
             </div>
+            {!result.correct && (
+              <button className="ghost" onClick={() => addWrongEntry({ id: question.id, prompt: question.prompt, options: question.options, answer: question.answer, explanation: result.explanation })}>
+                收藏到错题本
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -413,6 +491,50 @@ function App() {
               </button>
             </div>
           </div>
+        </section>
+
+        <section className="wrongbook">
+          <div className="wrongbook-header">
+            <h2>错题本 ({wrongBook.length})</h2>
+            <div className="wrongbook-actions">
+              <button className="ghost" onClick={clearWrongBook} disabled={!wrongBook.length}>
+                清空错题本
+              </button>
+            </div>
+          </div>
+          {!wrongBook.length && <p className="muted">暂无记录，答错题后可收藏。</p>}
+          {wrongBook.map((w) => (
+            <div key={w.id} className="card">
+              <div className="card-header">
+                <span className="badge">存档</span>
+                <div className="prompt">
+                  <Markdown content={w.prompt} />
+                </div>
+              </div>
+              {w.options && (
+                <div className="options">
+                  {w.options.map((opt) => (
+                    <div key={opt} className="pill">
+                      <InlineMarkdown content={opt} />
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="answer">
+                <span className="label">正确答案：</span>
+                <Markdown content={w.answer} />
+              </div>
+              {w.explanation && (
+                <div className="explanation">
+                  <span className="label">解析：</span>
+                  <Markdown content={w.explanation} />
+                </div>
+              )}
+              <button className="icon-button" onClick={() => removeWrongEntry(w.id)}>
+                移除
+              </button>
+            </div>
+          ))}
         </section>
       </main>
     </div>

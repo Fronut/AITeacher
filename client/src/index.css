@@ -97,6 +97,21 @@ h1 {
   cursor: pointer;
 }
 
+.wrongbook {
+  margin-top: 24px;
+}
+
+.wrongbook-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.wrongbook-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .panel {
   background: linear-gradient(135deg, rgba(158, 123, 255, 0.2), rgba(111, 204, 255, 0.1));
   border: 1px solid var(--border);

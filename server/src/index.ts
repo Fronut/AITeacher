@@ -28,7 +28,6 @@ const rawQuestionSchema = z.object({
   options: z.array(z.string()).optional(),
   answer: z.union([z.string(), z.array(z.string())]),
   explanation: z.string().optional(),
-  summary: z.string().optional(),
 });
 
 const quizResponseSchema = z.object({
@@ -48,7 +47,6 @@ const askSchema = z.object({
 function normalizeQuestion(raw: z.infer<typeof rawQuestionSchema>): QuizQuestion {
   const id = raw.id ?? randomUUID();
   const explanation = raw.explanation;
-  const summary = raw.summary;
   if (raw.type === 'choice') {
     const options = raw.options ?? [];
     const answer = Array.isArray(raw.answer) ? raw.answer[0] : raw.answer;
@@ -59,7 +57,6 @@ function normalizeQuestion(raw: z.infer<typeof rawQuestionSchema>): QuizQuestion
       options,
       answer,
       explanation,
-      summary,
     } as ChoiceQuestion;
   }
 
@@ -69,7 +66,6 @@ function normalizeQuestion(raw: z.infer<typeof rawQuestionSchema>): QuizQuestion
     prompt: raw.prompt,
     answer: raw.answer,
     explanation,
-    summary,
   } as QuizQuestion;
 }
 
@@ -167,7 +163,7 @@ app.post('/api/quiz', async (req: Request, res: Response, next: NextFunction) =>
       },
       {
         role: 'user',
-        content: `Generate ${count} ${type === 'choice' ? 'multiple-choice' : 'fill-in-the-blank'} questions about "${topic}". Avoid questions similar to these past prompts:\n${historyText}\nRequirements:\n- Output ONLY type "${type}" questions; do NOT mix other types.\n- Vary difficulty from easy to moderate.\n- Keep options/answers concise.\n- For multiple-choice, provide 3-5 options and mark the correct option label (A, B, C, ...).\n- For fill-in, provide concise reference answers.\n- Provide a short summary for each question about the main concept tested (e.g., derivative rules, matrix rank).\n- Use Markdown; math must use LaTeX with $...$ or $$...$$ delimiters.\nRespond ONLY with JSON matching: {"questions":[{"id":"string","type":"${type}","prompt":"string","options":["A. ..."],"answer":"string or array","explanation":"short rationale","summary":"brief concept"}]}.`,
+        content: `Generate ${count} ${type === 'choice' ? 'multiple-choice' : 'fill-in-the-blank'} questions about "${topic}". Avoid questions similar to these past prompts (treat as hard negatives, no paraphrases allowed):\n${historyText}\nRequirements:\n- Output ONLY type "${type}" questions; do NOT mix other types.\n- Ensure no question prompt has >=40% token overlap or clear semantic paraphrase with history. If a draft conflicts, regenerate a different question.\n- Vary difficulty from easy to moderate.\n- Keep options/answers concise.\n- For multiple-choice, provide 3-5 options and mark the correct option label (A, B, C, ...).\n- For fill-in, provide concise reference answers.\n- Use Markdown; math must use LaTeX with $...$ or $$...$$ delimiters.\nRespond ONLY with JSON matching: {"questions":[{"id":"string","type":"${type}","prompt":"string","options":["A. ..."],"answer":"string or array","explanation":"short rationale"}]}.`,
       },
     ];
 

@@ -7,7 +7,6 @@ export interface QuizQuestion {
   options?: string[];
   answer?: string | string[];
   explanation?: string;
-   summary?: string;
 }
 
 export interface GradeResult {
